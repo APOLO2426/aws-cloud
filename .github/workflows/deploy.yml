@@ -21,7 +21,6 @@ jobs:
       - name: Ensure Instance and Networking
         id: setup_aws
         run: |
-          # 1. Crear instancia si no existe
           aws lightsail create-instances \
             --instance-names ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
             --availability-zone us-east-1a \
@@ -29,20 +28,13 @@ jobs:
             --bundle-id micro_3_0 \
             --key-pair-name id_rsa || echo "Instancia ya existente"
 
-          # 2. BUCLE DE ESPERA MANUAL
           echo "Esperando a que la instancia esté en estado 'running'..."
           while true; do
             STATUS=$(aws lightsail get-instance --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} --query 'instance.state.name' --output text)
-            echo "Estado actual: $STATUS"
-            if [ "$STATUS" == "running" ]; then
-              break
-            fi
-            echo "Aún en transición... esperando 5 segundos más."
+            if [ "$STATUS" == "running" ]; then break; fi
             sleep 5
           done
           
-          # 3. Abrir los puertos (Ahora sí la instancia está lista)
-          echo "Abriendo puertos en el Firewall..."
           aws lightsail open-instance-public-ports \
             --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
             --port-info fromPort=80,toPort=80,protocol=tcp
@@ -51,15 +43,13 @@ jobs:
             --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
             --port-info fromPort=8000,toPort=8000,protocol=tcp
 
-          # 4. Obtener IP
           PUBLIC_IP=$(aws lightsail get-instance --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} --query 'instance.publicIpAddress' --output text)
           echo "INSTANCE_IP=$PUBLIC_IP" >> $GITHUB_ENV
-          echo "IP detectada: $PUBLIC_IP"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ env.INSTANCE_IP }} # <--- USAMOS LA IP RECIÉN OBTENIDA
+          host: ${{ env.INSTANCE_IP }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
@@ -68,18 +58,22 @@ jobs:
             fi
             cd app
             git pull origin main
+            
+            # Ejecutar setup (Instalará Node 22)
             bash setup.sh
 
-            # Backend
+            # Backend: Usar el uvicorn del venv directamente para PM2
             cd aws-cloud-backend
             python3 -m venv venv
             source venv/bin/activate
             echo "DATABASE_URL=postgresql://myuser:mypassword@localhost:5432/tasks_db" > .env
             pip install -r requirements.txt
+            
             pm2 delete fastapi-app || true
-            pm2 start "uvicorn main:app --host 0.0.0.0 --port 8000" --name fastapi-app
+            # Ejecutamos con el path absoluto del venv para evitar errores de intérprete
+            pm2 start "venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000" --name fastapi-app
 
-            # Frontend (Asegúrate que el nombre de carpeta sea aws-cloud)
+            # Frontend
             cd ../aws-cloud
             npm install
             npm run build
