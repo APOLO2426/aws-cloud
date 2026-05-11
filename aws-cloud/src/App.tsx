@@ -100,7 +100,7 @@ function App() {
 
         {/* Header */}
         <div className="card-header">
-          <h1 className="title">Tareas pendientes Univalle</h1>
+          <h1 className="title">Tareas</h1>
           {tasks.length > 0 && (
             <span className="badge">{pending} pendiente{pending !== 1 ? 's' : ''}</span>
           )}
