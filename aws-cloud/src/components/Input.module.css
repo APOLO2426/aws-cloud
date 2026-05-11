@@ -1,0 +1,143 @@
+/* ============================================================
+   Paleta
+   Fondo web        : #5C0839
+   Texto principal  : #FFFFFF
+   Texto secundario : #A6A8AB
+   ============================================================ */
+
+/* ---------- Wrapper ---------- */
+.wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+/* ---------- Label ---------- */
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #FFFFFF;
+  letter-spacing: 0.2px;
+}
+
+/* ---------- Input container (posiciona iconos) ---------- */
+.inputContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* ---------- Campo base ---------- */
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 2px solid rgba(166, 168, 171, 0.4);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.field::placeholder {
+  color: #A6A8AB;
+}
+
+/* ---------- Tamaños ---------- */
+.size-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.size-md {
+  padding: 10px 14px;
+  font-size: 15px;
+}
+
+.size-lg {
+  padding: 14px 18px;
+  font-size: 17px;
+  border-radius: 10px;
+}
+
+/* ---------- Iconos ---------- */
+.icon {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #A6A8AB;
+  pointer-events: none;
+  transition: color 0.2s ease;
+}
+
+.iconStart { left: 12px; }
+.iconEnd   { right: 12px; }
+
+.hasStartIcon { padding-left: 38px; }
+.hasEndIcon   { padding-right: 38px; }
+
+/* ---------- Focus (variante default) ---------- */
+.variant-default.focused,
+.variant-default:focus {
+  border-color: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.inputContainer:focus-within .icon {
+  color: #FFFFFF;
+}
+
+/* ---------- Variante: success ---------- */
+.variant-success {
+  border-color: #A6A8AB;
+  background-color: rgba(166, 168, 171, 0.12);
+}
+
+.variant-success.focused,
+.variant-success:focus {
+  border-color: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+}
+
+/* ---------- Variante: error ---------- */
+.variant-error {
+  border-color: #FF8A80;
+  background-color: rgba(255, 138, 128, 0.1);
+}
+
+.variant-error.focused,
+.variant-error:focus {
+  border-color: #FF8A80;
+  box-shadow: 0 0 0 3px rgba(255, 138, 128, 0.2);
+}
+
+/* ---------- Disabled ---------- */
+.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- Textos de ayuda ---------- */
+.helperText {
+  font-size: 12px;
+  color: #A6A8AB;
+  padding-left: 2px;
+}
+
+.errorText {
+  color: #FF8A80;
+  font-weight: 500;
+}
