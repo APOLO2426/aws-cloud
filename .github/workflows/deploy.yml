@@ -29,11 +29,19 @@ jobs:
             --bundle-id micro_3_0 \
             --key-pair-name id_rsa || echo "Instancia ya existente"
 
-          # 2. ESPERAR A QUE LA INSTANCIA ESTÉ 'RUNNING'
-          echo "Esperando a que la instancia esté lista..."
-          aws lightsail wait instance-running --instance-names ${{ secrets.LIGHTSAIL_INSTANCE_NAME }}
+          # 2. BUCLE DE ESPERA MANUAL
+          echo "Esperando a que la instancia esté en estado 'running'..."
+          while true; do
+            STATUS=$(aws lightsail get-instance --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} --query 'instance.state.name' --output text)
+            echo "Estado actual: $STATUS"
+            if [ "$STATUS" == "running" ]; then
+              break
+            fi
+            echo "Aún en transición... esperando 5 segundos más."
+            sleep 5
+          done
           
-          # 3. Ahora que está lista, abrimos los puertos
+          # 3. Abrir los puertos (Ahora sí la instancia está lista)
           echo "Abriendo puertos en el Firewall..."
           aws lightsail open-instance-public-ports \
             --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
@@ -43,14 +51,8 @@ jobs:
             --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
             --port-info fromPort=8000,toPort=8000,protocol=tcp
 
-          # 4. OBTENER IP (Ya no necesitas el sleep 15 porque el 'wait' ya hizo la espera)
+          # 4. Obtener IP
           PUBLIC_IP=$(aws lightsail get-instance --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} --query 'instance.publicIpAddress' --output text)
-          
-          if [ "$PUBLIC_IP" == "None" ] || [ -z "$PUBLIC_IP" ]; then
-            echo "Error: No se pudo obtener la IP."
-            exit 1
-          fi
-          
           echo "INSTANCE_IP=$PUBLIC_IP" >> $GITHUB_ENV
           echo "IP detectada: $PUBLIC_IP"
 
