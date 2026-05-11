@@ -1,0 +1,82 @@
+name: Deploy Tasks App to Lightsail
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Ensure Instance and Networking
+        id: setup_aws
+        run: |
+          # Crear instancia si no existe
+          aws lightsail create-instances \
+            --instance-names ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
+            --availability-zone us-east-1a \
+            --blueprint-id ubuntu_22_04 \
+            --bundle-id micro_3_0 \
+            --key-pair-name id_rsa || echo "Instancia ya existente"
+          
+          # Abrir puertos
+          aws lightsail open-instance-public-ports \
+            --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
+            --port-info fromPort=80,toPort=80,protocol=tcp
+          
+          aws lightsail open-instance-public-ports \
+            --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
+            --port-info fromPort=8000,toPort=8000,protocol=tcp
+
+          # ESPERA DE SEGURIDAD: 15 segundos para que AWS asigne la IP
+          echo "Esperando a que AWS asigne la IP..."
+          sleep 15
+
+          # OBTENER IP
+          PUBLIC_IP=$(aws lightsail get-instance --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} --query 'instance.publicIpAddress' --output text)
+          
+          if [ "$PUBLIC_IP" == "None" ] || [ -z "$PUBLIC_IP" ]; then
+            echo "Error: No se pudo obtener la IP de la instancia todavía."
+            exit 1
+          fi
+          
+          echo "INSTANCE_IP=$PUBLIC_IP" >> $GITHUB_ENV
+          echo "Desplegando en la IP: $PUBLIC_IP"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ env.INSTANCE_IP }} # <--- USAMOS LA IP RECIÉN OBTENIDA
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            if [ ! -d "app" ]; then
+              git clone https://github.com/${{ github.repository }}.git app
+            fi
+            cd app
+            git pull origin main
+            bash setup.sh
+
+            # Backend
+            cd aws-cloud-backend
+            python3 -m venv venv
+            source venv/bin/activate
+            echo "DATABASE_URL=postgresql://myuser:mypassword@localhost:5432/tasks_db" > .env
+            pip install -r requirements.txt
+            pm2 delete fastapi-app || true
+            pm2 start "uvicorn main:app --host 0.0.0.0 --port 8000" --name fastapi-app
+
+            # Frontend (Asegúrate que el nombre de carpeta sea aws-cloud)
+            cd ../aws-cloud
+            npm install
+            npm run build
