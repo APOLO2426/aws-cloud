@@ -21,36 +21,35 @@ jobs:
       - name: Ensure Instance and Networking
         id: setup_aws
         run: |
-          # 1. Crear instancia si no existe
+          # Intentar crear silenciando el error si ya existe
           aws lightsail create-instances \
             --instance-names ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
             --availability-zone us-east-1a \
             --blueprint-id ubuntu_22_04 \
             --bundle-id micro_3_0 \
-            --key-pair-name id_rsa || echo "Instancia ya existente"
+            --key-pair-name id_rsa 2>/dev/null || echo "Instancia ya operativa."
 
-          # 2. Esperar a que esté Running
-          echo "Esperando a que la instancia esté en estado 'running'..."
+          echo "Verificando estado de la instancia..."
           while true; do
             STATUS=$(aws lightsail get-instance --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} --query 'instance.state.name' --output text)
             if [ "$STATUS" == "running" ]; then break; fi
-            echo "Estado actual: $STATUS... esperando 5s"
             sleep 5
           done
           
-          # 3. Asegurar puertos (Incluyendo el 22 por si las dudas)
-          echo "Configurando Firewall..."
+          echo "Abriendo puertos en Firewall..."
           for port in 22 80 8000; do
             aws lightsail open-instance-public-ports \
               --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} \
-              --port-info fromPort=$port,toPort=$port,protocol=tcp || true
+              --port-info fromPort=$port,toPort=$port,protocol=tcp 2>/dev/null || true
           done
 
-          # 4. Obtener IP y esperar a que el OS cargue el servicio SSH
           PUBLIC_IP=$(aws lightsail get-instance --instance-name ${{ secrets.LIGHTSAIL_INSTANCE_NAME }} --query 'instance.publicIpAddress' --output text)
           echo "INSTANCE_IP=$PUBLIC_IP" >> $GITHUB_ENV
-          echo "IP detectada: $PUBLIC_IP. Esperando 30s para estabilidad de SSH..."
-          sleep 30
+          
+          mkdir -p ~/.ssh
+          ssh-keygen -R $PUBLIC_IP 2>/dev/null || true
+          echo "IP detectada: $PUBLIC_IP. Estabilizando SSH..."
+          sleep 20
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@master
@@ -58,31 +57,45 @@ jobs:
           host: ${{ env.INSTANCE_IP }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          connect_timeout: 30s # Darle más tiempo para conectar
+          connect_timeout: 60s
+          command_timeout: 15m
           script: |
             if [ ! -d "app" ]; then
               git clone https://github.com/${{ github.repository }}.git app
             fi
             cd app
-            git pull origin main
             
-            # Ejecutar setup
+            # Sincronización total con Git
+            git fetch --all
+            git reset --hard origin/main
+            
+            # Setup del sistema
             bash setup.sh
 
-            # Backend
+            # --- Backend ---
             cd aws-cloud-backend
             python3 -m venv venv
             source venv/bin/activate
             echo "DATABASE_URL=postgresql://myuser:mypassword@localhost:5432/tasks_db" > .env
+            pip install --upgrade pip
             pip install -r requirements.txt
             
-            pm2 delete fastapi-app || true
+            pm2 delete fastapi-app 2>/dev/null || true
             pm2 start "venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000" --name fastapi-app
+            pm2 save
 
-            # Frontend
+            # --- Frontend ---
             cd ../aws-cloud
-            # CREACIÓN DEL .ENV PARA VITE (Usando la IP de la instancia)
+            # Importante: El .env del front debe tener la IP actual
             echo "VITE_API_URL=http://${{ env.INSTANCE_IP }}" > .env
-            cd ../aws-cloud
-            npm install
+            
+            # Limpiar build anterior para forzar cambios
+            rm -rf dist
+            
+            # Si npm ci falla (por cambios en el lock), usamos install normal
+            npm ci || (rm -rf node_modules && npm install)
+            
             npm run build
+            
+            # Reinicio de Nginx para asegurar que lea el nuevo 'dist'
+            sudo systemctl restart nginx
