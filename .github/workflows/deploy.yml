@@ -81,5 +81,8 @@ jobs:
 
             # Frontend
             cd ../aws-cloud
+            # CREACIÓN DEL .ENV PARA VITE (Usando la IP de la instancia)
+            echo "VITE_API_URL=http://${{ env.INSTANCE_IP }}" > .env
+            cd ../aws-cloud
             npm install
             npm run build
